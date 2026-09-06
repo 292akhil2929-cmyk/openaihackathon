@@ -508,6 +508,7 @@ function applyLanguage(lang) {
     if (val) el.textContent = val;
   });
   localStorage.setItem("rti-language", lang);
+  updateAssistantLanguage(lang);
 }
 function openModal(modal) {
   lastFocus = document.activeElement;
@@ -829,6 +830,99 @@ if (window.fetch) {
 } else {
   $("#systemStatus span").textContent = "Offline helper ready · core drafting still works";
 }
+const assistantLocales = {
+  en:["English","en-IN"],hi:["हिन्दी","hi-IN"],bn:["বাংলা","bn-IN"],ta:["தமிழ்","ta-IN"],te:["తెలుగు","te-IN"],mr:["मराठी","mr-IN"],gu:["ગુજરાતી","gu-IN"],kn:["ಕನ್ನಡ","kn-IN"],ml:["മലയാളം","ml-IN"],pa:["ਪੰਜਾਬੀ","pa-IN"],ur:["اردو","ur-IN"],or:["ଓଡ଼ିଆ","or-IN"],as:["অসমীয়া","as-IN"],sa:["संस्कृतम्","sa-IN"],ks:["کٲشُر","ks-IN"],ne:["नेपाली","ne-NP"],sd:["سنڌي","sd-IN"],kok:["कोंकणी","kok-IN"],mni:["মৈতৈলোন্","mni-IN"],brx:["बड़ो","brx-IN"],doi:["डोगरी","doi-IN"],sat:["ᱥᱟᱱᱛᱟᱲᱤ","sat-IN"]
+};
+const assistantCopy = {
+  en:["Ask RTI Saathi","Ask in your language…","Send","I can help you frame an RTI question, find the right authority, or understand the next step.","Which authority?","Improve my question","Central or State?","Text and voice"],
+  hi:["RTI साथी से पूछें","अपनी भाषा में पूछें…","भेजें","मैं RTI सवाल लिखने, सही विभाग चुनने और अगला कदम समझने में मदद कर सकता हूँ।","कौन सा विभाग?","मेरा सवाल सुधारें","केंद्र या राज्य?","लिखें या बोलें"],
+  bn:["RTI সাথীকে জিজ্ঞাসা করুন","নিজের ভাষায় জিজ্ঞাসা করুন…","পাঠান","আমি RTI প্রশ্ন লিখতে, সঠিক দপ্তর খুঁজতে এবং পরের ধাপ বুঝতে সাহায্য করি।","কোন দপ্তর?","প্রশ্নটি উন্নত করুন","কেন্দ্র না রাজ্য?","লিখুন বা বলুন"],
+  ta:["RTI சாத்தியிடம் கேளுங்கள்","உங்கள் மொழியில் கேளுங்கள்…","அனுப்பு","RTI கேள்வியை எழுதவும் சரியான துறையைக் கண்டறியவும் நான் உதவுவேன்.","எந்தத் துறை?","கேள்வியை மேம்படுத்து","மத்தியா மாநிலமா?","எழுதவும் பேசவும்"],
+  te:["RTI సాథిని అడగండి","మీ భాషలో అడగండి…","పంపండి","RTI ప్రశ్న రాయడం, సరైన శాఖను కనుగొనడం, తదుపరి దశను అర్థం చేసుకోవడంలో సహాయం చేస్తాను.","ఏ శాఖ?","నా ప్రశ్నను మెరుగుపరచు","కేంద్రమా రాష్ట్రమా?","రాయండి లేదా మాట్లాడండి"],
+  mr:["RTI साथीला विचारा","तुमच्या भाषेत विचारा…","पाठवा","RTI प्रश्न लिहिणे, योग्य विभाग शोधणे आणि पुढील पाऊल समजणे यासाठी मी मदत करतो.","कोणता विभाग?","माझा प्रश्न सुधारा","केंद्र की राज्य?","लिहा किंवा बोला"]
+};
+let assistantMessages = [], assistantConfigured = false, assistantSpeaking = true, mediaRecorder, audioChunks = [], recordingTimer;
+function assistantText(lang = localStorage.getItem("rti-language") || "en") { return assistantCopy[lang] || assistantCopy.en; }
+function updateAssistantLanguage(lang) {
+  if (!$("#saathiAssistant")) return;
+  const copy = assistantText(lang), locale = assistantLocales[lang] || assistantLocales.en;
+  $("#saathiTitle").textContent = copy[0];
+  $("#saathiLauncherLabel").textContent = copy[0].replace("RTI ", "");
+  $("#saathiInput").placeholder = copy[1];
+  $("#saathiSend").textContent = copy[2];
+  $("#saathiLanguage").textContent = `${locale[0]} · ${copy[7]}`;
+  $("#saathiPrompts").innerHTML = copy.slice(4,7).map((x) => `<button type="button">${safeText(x)}</button>`).join("");
+  if (!assistantMessages.length) addAssistantMessage("assistant", copy[3], false);
+}
+function addAssistantMessage(role, text, speak = true) {
+  assistantMessages.push({ role, content: String(text).slice(0, 1600) });
+  assistantMessages = assistantMessages.slice(-10);
+  const item = document.createElement("div");
+  item.className = `saathi-message saathi-message--${role}`;
+  item.textContent = text;
+  $("#saathiMessages").append(item);
+  item.scrollIntoView?.({ block:"end" });
+  if (role === "assistant" && speak && assistantSpeaking) speakAnswer(text);
+}
+function setAssistantStatus(text, state = "") {
+  $("#saathiStatus span").textContent = text;
+  $("#saathiStatus").className = `saathi-status ${state}`.trim();
+}
+function speakAnswer(text) {
+  if (!("speechSynthesis" in window)) return setAssistantStatus("Text answer ready · no device voice found", "is-warning");
+  speechSynthesis.cancel();
+  const lang = localStorage.getItem("rti-language") || "en", locale = (assistantLocales[lang] || assistantLocales.en)[1];
+  const utterance = new SpeechSynthesisUtterance(text); utterance.lang = locale;
+  const voices = speechSynthesis.getVoices();
+  utterance.voice = voices.find((v) => v.lang.toLowerCase() === locale.toLowerCase()) || voices.find((v) => v.lang.toLowerCase().startsWith(locale.slice(0,2).toLowerCase())) || null;
+  speechSynthesis.speak(utterance);
+}
+function localAssistantReply(question) {
+  const q = question.toLowerCase(), lang = localStorage.getItem("rti-language") || "en";
+  if (lang === "hi") {
+    if (/पंचायत|नगरपालिका|पुलिस|राज्य/.test(q)) return "यह आमतौर पर राज्य या स्थानीय प्राधिकरण का विषय है। अपना राज्य RTI पोर्टल चुनें और रिकॉर्ड, स्थान तथा समय अवधि साफ़ लिखें।";
+    return "अच्छा RTI सवाल रिकॉर्ड माँगता है: ‘कृपया [रिकॉर्ड] की प्रमाणित प्रति [तारीख] से [तारीख] तक उपलब्ध कराएँ।’ ऑनलाइन AI अभी उपलब्ध नहीं है, लेकिन आप लिखना जारी रख सकते हैं।";
+  }
+  return /panchayat|municipal|local police|state/.test(q) ? "This is usually a State or local authority matter. Choose your State RTI portal and name the record, place, and date range." : "A strong RTI asks for an existing record: “Please provide a certified copy of [record] for [place] from [start date] to [end date].” Online AI is unavailable, but you can keep drafting.";
+}
+async function askAssistant(question) {
+  addAssistantMessage("user", question, false); setAssistantStatus("Preparing a short answer…", "is-working");
+  $("#saathiSend").disabled = true;
+  try {
+    const response = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ language:localStorage.getItem("rti-language") || "en", messages:assistantMessages.slice(-8) }) });
+    if (!response.ok) throw new Error(String(response.status));
+    const data = await response.json(); addAssistantMessage("assistant", data.answer); setAssistantStatus("Groq assistant ready", "is-ready");
+  } catch { addAssistantMessage("assistant", localAssistantReply(question)); setAssistantStatus("Low-data guidance · reconnect for AI", "is-warning"); }
+  finally { $("#saathiSend").disabled = false; $("#saathiInput").focus(); }
+}
+async function blobToDataUrl(blob) { return new Promise((resolve,reject) => { const r = new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsDataURL(blob); }); }
+async function transcribeAudio(blob) {
+  if (blob.size > 2_000_000) throw new Error("Audio is too long. Please try a shorter question.");
+  setAssistantStatus("Turning speech into text…", "is-working");
+  const response = await fetch("/api/transcribe", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ audio:await blobToDataUrl(blob), mimeType:blob.type, language:localStorage.getItem("rti-language") || "en" }) });
+  if (!response.ok) throw new Error("Voice transcription needs the online assistant.");
+  const data = await response.json(); $("#saathiInput").value = data.text; setAssistantStatus("Speech captured · check and send", "is-ready");
+}
+async function toggleRecording() {
+  if (mediaRecorder?.state === "recording") return mediaRecorder.stop();
+  if (!navigator.mediaDevices?.getUserMedia || !("MediaRecorder" in window)) return setAssistantStatus("Voice recording is not supported here. Please type your question.", "is-warning");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true}); audioChunks=[];
+    mediaRecorder = new MediaRecorder(stream, { mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm" });
+    mediaRecorder.ondataavailable=(e)=>{ if(e.data.size) audioChunks.push(e.data); };
+    mediaRecorder.onstop=async()=>{ clearTimeout(recordingTimer); $("#saathiMic").classList.remove("is-recording"); stream.getTracks().forEach(t=>t.stop()); try { await transcribeAudio(new Blob(audioChunks,{type:mediaRecorder.mimeType})); } catch(e) { setAssistantStatus(e.message,"is-warning"); } };
+    mediaRecorder.start(); $("#saathiMic").classList.add("is-recording"); setAssistantStatus("Listening… tap the microphone to stop", "is-recording"); recordingTimer=setTimeout(()=>mediaRecorder?.state==="recording"&&mediaRecorder.stop(),30000);
+  } catch { setAssistantStatus("Microphone permission was not granted. You can type instead.","is-warning"); }
+}
+function setAssistantOpen(open) { $("#saathiAssistant").hidden=!open; $("#saathiLauncher").setAttribute("aria-expanded",String(open)); if(open) setTimeout(()=>$("#saathiInput").focus(),0); }
+$("#saathiLauncher").addEventListener("click",()=>setAssistantOpen($("#saathiAssistant").hidden));
+$("#saathiClose").addEventListener("click",()=>setAssistantOpen(false));
+$("#saathiForm").addEventListener("submit",(e)=>{ e.preventDefault(); const q=$("#saathiInput").value.trim(); if(q){ $("#saathiInput").value=""; askAssistant(q); } });
+$("#saathiPrompts").addEventListener("click",(e)=>{ if(e.target.matches("button")){ $("#saathiInput").value=e.target.textContent; askAssistant(e.target.textContent); } });
+$("#saathiMic").addEventListener("click",toggleRecording);
+$("#saathiSpeak").addEventListener("click",(e)=>{ assistantSpeaking=!assistantSpeaking; e.currentTarget.setAttribute("aria-pressed",String(assistantSpeaking)); if(!assistantSpeaking && "speechSynthesis" in window) speechSynthesis.cancel(); });
+if (window.fetch) fetch("/api/health").then(r=>r.json()).then(data=>{ assistantConfigured=Boolean(data.aiConfigured); setAssistantStatus(assistantConfigured ? "Groq assistant ready · device voice" : "Low-data guidance · add Groq key for AI", assistantConfigured?"is-ready":"is-warning"); }).catch(()=>setAssistantStatus("Offline guidance ready","is-warning"));
+
 const savedLang = localStorage.getItem("rti-language") || "en";
 $("#languageSelect").value = savedLang;
 applyLanguage(savedLang);

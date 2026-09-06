@@ -876,6 +876,38 @@
         >
       </p>
     </div>
+
+    <button type="button" class="saathi-launcher" id="saathiLauncher" aria-expanded="false" aria-controls="saathiAssistant">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.7 4v-4A2.5 2.5 0 0 1 4 13.5z"/><path d="M8 8h8M8 11.5h5"/></svg>
+      <span id="saathiLauncherLabel">Ask Saathi</span>
+    </button>
+
+    <section class="saathi-assistant" id="saathiAssistant" hidden aria-labelledby="saathiTitle">
+      <header class="saathi-assistant__header">
+        <div class="saathi-mark" aria-hidden="true">सा</div>
+        <div><h2 id="saathiTitle">Ask RTI Saathi</h2><p id="saathiLanguage">English · text and voice</p></div>
+        <button type="button" id="saathiClose" class="saathi-icon-button" aria-label="Close assistant">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="saathi-status" id="saathiStatus" role="status"><i></i><span>Checking assistant…</span></div>
+      <div class="saathi-messages" id="saathiMessages" role="log" aria-live="polite" aria-relevant="additions"></div>
+      <div class="saathi-prompts" id="saathiPrompts" aria-label="Suggested questions"></div>
+      <form class="saathi-compose" id="saathiForm">
+        <label class="sr-only" for="saathiInput">Ask an RTI question</label>
+        <textarea id="saathiInput" rows="2" maxlength="1000" placeholder="Ask in your language…" required></textarea>
+        <div class="saathi-compose__actions">
+          <button type="button" id="saathiMic" class="saathi-icon-button saathi-mic" aria-label="Speak your question">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"/></svg>
+          </button>
+          <button type="button" id="saathiSpeak" class="saathi-icon-button" aria-pressed="true" aria-label="Read answers aloud">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 10v4h4l5 4V6l-5 4zM17 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/></svg>
+          </button>
+          <button type="submit" class="saathi-send" id="saathiSend">Send</button>
+        </div>
+      </form>
+      <p class="saathi-privacy" id="saathiPrivacy">Your audio is sent only for transcription and is not stored by RTI Saathi. This is guidance, not an official government reply.</p>
+    </section>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

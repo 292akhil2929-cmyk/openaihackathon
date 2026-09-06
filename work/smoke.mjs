@@ -12,6 +12,7 @@ const { window } = dom;
 window.HTMLElement.prototype.scrollIntoView = () => {};
 window.eval(js);
 const $ = (selector) => window.document.querySelector(selector);
+const $$ = (selector) => [...window.document.querySelectorAll(selector)];
 const click = (selector) =>
   $(selector).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
@@ -135,6 +136,19 @@ if ($('[data-action="track"] [data-i18n="track"]').textContent.trim() !== "Track
   throw new Error("English tracking action was overridden by workspace copy");
 if ($("#liteToggle")) throw new Error("Manual Lite control should not exist");
 
+if (!$("#saathiLauncher") || !$("#saathiAssistant") || !$("#saathiMic"))
+  throw new Error("Multilingual voice assistant controls are missing");
+click("#saathiLauncher");
+if ($("#saathiAssistant").hidden || $("#saathiLauncher").getAttribute("aria-expanded") !== "true")
+  throw new Error("Assistant did not open accessibly");
+$("#saathiInput").value = "Which authority handles village road records?";
+$("#saathiForm").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+await new Promise((resolve) => setTimeout(resolve, 0));
+if ($$(".saathi-message--user").length !== 1 || $$(".saathi-message--assistant").length < 2)
+  throw new Error("Assistant offline fallback did not answer");
+click("#saathiClose");
+if (!$("#saathiAssistant").hidden) throw new Error("Assistant did not close");
+
 console.log(
-  "Smoke test passed: all 22 language essentials, RTL direction, onboarding, routing, four-step form, review, confirmation, and automatic low-data architecture.",
+  "Smoke test passed: all 22 language essentials, RTL direction, onboarding, routing, four-step form, voice assistant shell, offline chat fallback, review, confirmation, and automatic low-data architecture.",
 );
