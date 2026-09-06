@@ -893,7 +893,14 @@ async function speakAnswer(text) {
   if (!("speechSynthesis" in window)) return setAssistantStatus("Text answer ready · no device voice found", "is-warning");
   speechSynthesis.cancel();
   const lang = localStorage.getItem("rti-language") || "en", locale = (assistantLocales[lang] || assistantLocales.en)[1];
-  const utterance = new SpeechSynthesisUtterance(text); utterance.lang = locale;
+  const spokenText = String(text)
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/[*_#`>]/g, "")
+    .replace(/^\s*(?:[-•]|\d+[.)])\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!spokenText) return;
+  const utterance = new SpeechSynthesisUtterance(spokenText); utterance.lang = locale;
   const voice = await getMatchingVoice(locale);
   if (!voice) return setAssistantStatus(`Answer ready · ${assistantLocales[lang][0]} voice is not installed on this device`, "is-warning");
   if (lang !== (localStorage.getItem("rti-language") || "en")) return;
