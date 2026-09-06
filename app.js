@@ -841,10 +841,16 @@ const assistantCopy = {
   te:["RTI సాథిని అడగండి","మీ భాషలో అడగండి…","పంపండి","RTI ప్రశ్న రాయడం, సరైన శాఖను కనుగొనడం, తదుపరి దశను అర్థం చేసుకోవడంలో సహాయం చేస్తాను.","ఏ శాఖ?","నా ప్రశ్నను మెరుగుపరచు","కేంద్రమా రాష్ట్రమా?","రాయండి లేదా మాట్లాడండి"],
   mr:["RTI साथीला विचारा","तुमच्या भाषेत विचारा…","पाठवा","RTI प्रश्न लिहिणे, योग्य विभाग शोधणे आणि पुढील पाऊल समजणे यासाठी मी मदत करतो.","कोणता विभाग?","माझा प्रश्न सुधारा","केंद्र की राज्य?","लिहा किंवा बोला"]
 };
-let assistantMessages = [], assistantConfigured = false, assistantSpeaking = true, mediaRecorder, audioChunks = [], recordingTimer;
+let assistantMessages = [], assistantConfigured = false, assistantSpeaking = true, assistantLanguage = null, mediaRecorder, audioChunks = [], recordingTimer;
 function assistantText(lang = localStorage.getItem("rti-language") || "en") { return assistantCopy[lang] || assistantCopy.en; }
 function updateAssistantLanguage(lang) {
   if (!$("#saathiAssistant")) return;
+  if (assistantLanguage && assistantLanguage !== lang) {
+    assistantMessages = [];
+    $("#saathiMessages").replaceChildren();
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+  }
+  assistantLanguage = lang;
   const copy = assistantText(lang), locale = assistantLocales[lang] || assistantLocales.en;
   $("#saathiTitle").textContent = copy[0];
   $("#saathiLauncherLabel").textContent = copy[0].replace("RTI ", "");
@@ -868,13 +874,32 @@ function setAssistantStatus(text, state = "") {
   $("#saathiStatus span").textContent = text;
   $("#saathiStatus").className = `saathi-status ${state}`.trim();
 }
-function speakAnswer(text) {
+async function getMatchingVoice(locale) {
+  const find = () => {
+    const voices = speechSynthesis.getVoices();
+    return voices.find((v) => v.lang.toLowerCase() === locale.toLowerCase()) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith(`${locale.slice(0,2).toLowerCase()}-`));
+  };
+  let voice = find();
+  if (voice) return voice;
+  await new Promise((resolve) => {
+    const done = () => { speechSynthesis.removeEventListener?.("voiceschanged", done); resolve(); };
+    speechSynthesis.addEventListener?.("voiceschanged", done, { once:true });
+    setTimeout(done, 900);
+  });
+  return find();
+}
+async function speakAnswer(text) {
   if (!("speechSynthesis" in window)) return setAssistantStatus("Text answer ready · no device voice found", "is-warning");
   speechSynthesis.cancel();
   const lang = localStorage.getItem("rti-language") || "en", locale = (assistantLocales[lang] || assistantLocales.en)[1];
   const utterance = new SpeechSynthesisUtterance(text); utterance.lang = locale;
-  const voices = speechSynthesis.getVoices();
-  utterance.voice = voices.find((v) => v.lang.toLowerCase() === locale.toLowerCase()) || voices.find((v) => v.lang.toLowerCase().startsWith(locale.slice(0,2).toLowerCase())) || null;
+  const voice = await getMatchingVoice(locale);
+  if (!voice) return setAssistantStatus(`Answer ready · ${assistantLocales[lang][0]} voice is not installed on this device`, "is-warning");
+  if (lang !== (localStorage.getItem("rti-language") || "en")) return;
+  utterance.voice = voice;
+  utterance.rate = 0.95;
+  utterance.onerror = () => setAssistantStatus("The device could not play this voice. The answer is still available as text.", "is-warning");
   speechSynthesis.speak(utterance);
 }
 function localAssistantReply(question) {
@@ -901,7 +926,12 @@ async function transcribeAudio(blob) {
   setAssistantStatus("Turning speech into text…", "is-working");
   const response = await fetch("/api/transcribe", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ audio:await blobToDataUrl(blob), mimeType:blob.type, language:localStorage.getItem("rti-language") || "en" }) });
   if (!response.ok) throw new Error("Voice transcription needs the online assistant.");
-  const data = await response.json(); $("#saathiInput").value = data.text; setAssistantStatus("Speech captured · check and send", "is-ready");
+  const data = await response.json();
+  const question = String(data.text || "").trim();
+  if (!question) throw new Error("I could not hear a clear question. Please try again.");
+  $("#saathiInput").value = "";
+  setAssistantStatus("Question heard · preparing your answer…", "is-working");
+  await askAssistant(question);
 }
 async function toggleRecording() {
   if (mediaRecorder?.state === "recording") return mediaRecorder.stop();

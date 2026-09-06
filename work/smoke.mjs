@@ -146,6 +146,12 @@ $("#saathiForm").dispatchEvent(new window.Event("submit", { bubbles: true, cance
 await new Promise((resolve) => setTimeout(resolve, 0));
 if ($$(".saathi-message--user").length !== 1 || $$(".saathi-message--assistant").length < 2)
   throw new Error("Assistant offline fallback did not answer");
+$("#languageSelect").value = "hi";
+$("#languageSelect").dispatchEvent(new window.Event("change", { bubbles: true }));
+if ($$(".saathi-message--user").length || $$(".saathi-message--assistant").length !== 1 || !$(".saathi-message--assistant").textContent.includes("RTI सवाल"))
+  throw new Error("Assistant conversation did not reset to the selected language");
+if (!js.includes("await askAssistant(question)"))
+  throw new Error("Voice transcription does not send the question directly");
 click("#saathiClose");
 if (!$("#saathiAssistant").hidden) throw new Error("Assistant did not close");
 
